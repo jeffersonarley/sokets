@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-Room App</title>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #eceff1;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            background: #2c3e50;
+            color: white;
+            width: 100%;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 20px;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .voto-btn {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 10px;
+            cursor: pointer;
+            border: 1px solid #3498db;
+            background: white;
+            border-radius: 4px;
+            transition: 0.3s;
+        }
+
+        .voto-btn:hover {
+            background: #3498db;
+            color: white;
+        }
+
+        #chat-mensajes {
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #fafafa;
+        }
+
+        .juego-btn {
+            font-size: 2rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            transition: transform 0.2s;
+        }
+
+        .juego-btn:hover {
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>🚀 Sistema Multi-Sala</h1>
+    <p>
+        Sala: <b id="nombre-sala">Ninguna</b> |
+        Usuarios: <span id="conteo">0</span>
+    </p>
+
+    <button onclick="cambiarSala('General')">General</button>
+    <button onclick="cambiarSala('Devs')">Devs</button>
+</header>
+
+<div class="container">
+
+    <!-- ENCUESTA -->
+    <div class="card">
+        <h2 id="pregunta-titulo">Cargando encuesta...</h2>
+        <div id="contenedor-votos"></div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="card">
+        <h2>💬 Chat</h2>
+
+        <div id="chat-mensajes"></div>
+
+        <input type="text" id="chat-input" placeholder="Escribe un mensaje...">
+        <button onclick="enviarMensaje()">Enviar</button>
+    </div>
+
+    <!-- JUEGO -->
+    <div class="card" style="text-align: center;">
+        <h2>🎮 Piedra, Papel o Tijera</h2>
+
+        <button class="juego-btn" onclick="jugar('🪨')">🪨</button>
+        <button class="juego-btn" onclick="jugar('📄')">📄</button>
+        <button class="juego-btn" onclick="jugar('✂️')">✂️</button>
+
+        <div id="juego-resultado" style="margin-top: 15px; font-weight: bold;"></div>
+    </div>
+
+</div>
+
+<script>
+const socket = io();
+
+let salaActual = "General";
+
+// 🔐 Nombre de usuario
+let nombreUsuario = prompt("Ingresa tu nombre:");
+if (!nombreUsuario) nombreUsuario = "Anon";
+
+// Unirse automáticamente
+cambiarSala(salaActual);
+
+// --- CAMBIAR SALA ---
+function cambiarSala(nuevaSala) {
+    salaActual = nuevaSala;
+
+    document.getElementById('nombre-sala').innerText = nuevaSala;
+    document.getElementById('chat-mensajes').innerHTML = "";
+    document.getElementById('juego-resultado').innerText = "";
+
+    socket.emit('unirse:sala', nuevaSala);
+}
+
+// --- ENCUESTA ---
+socket.on('encuesta:estado', renderizarEncuesta);
+socket.on('encuesta:resultado', renderizarEncuesta);
+socket.on('encuesta:error', m => alert(m));
+
+function renderizarEncuesta(data) {
+    document.getElementById('pregunta-titulo').innerText = data.pregunta;
+
+    const contenedor = document.getElementById('contenedor-votos');
+    contenedor.innerHTML = "";
+
+    for (let opcion in data.opciones) {
+        contenedor.innerHTML += `
+            <button class="voto-btn" onclick="votar('${opcion}')">
+                ${opcion} (${data.opciones[opcion]})
+            </button>
+        `;
+    }
+}
+
+function votar(opcion) {
+    socket.emit('encuesta:votar', {
+        salaId: salaActual,
+        opcion
+    });
+}
+
+// --- CHAT ---
+function enviarMensaje() {
+    const input = document.getElementById('chat-input');
+
+    if (!input.value.trim()) return;
+
+    socket.emit('chat:enviar', {
+        salaId: salaActual,
+        mensaje: input.value,
+        usuario: nombreUsuario
+    });
+
+    input.value = "";
+}
+
+socket.on('chat:nuevo_mensaje', d => {
+    const box = document.getElementById('chat-mensajes');
+
+    box.innerHTML += `
+        <p><small>${d.hora}</small> <b>${d.usuario}:</b> ${d.texto}</p>
+    `;
+
+    box.scrollTop = box.scrollHeight;
+});
+
+// --- JUEGO ---
+function jugar(emoji) {
+    socket.emit('juego:jugada', {
+        salaId: salaActual,
+        jugada: emoji,
+        usuario: nombreUsuario
+    });
+
+    document.getElementById('juego-resultado').innerText = "Esperando jugador...";
+}
+
+socket.on('juego:esperando', m => {
+    document.getElementById('juego-resultado').innerText = m;
+});
+
+socket.on('juego:finalizado', d => {
+    document.getElementById('juego-resultado').innerHTML =
+        `${d.detalle}<br>${d.resultado}`;
+});
+
+// --- USUARIOS ---
+socket.on('usuarios:conteo', c => {
+    document.getElementById('conteo').innerText = c;
+});
+</script>
+
+</body>
+</html>

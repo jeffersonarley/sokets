@@ -1,0 +1,12 @@
+# Dependencias (esta carpeta es muy pesada y se genera con npm install)
+node_modules/
+
+# Archivo de secretos (NUNCA lo subas a GitHub)
+.env
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Logs de errores
+npm-debug.log*
